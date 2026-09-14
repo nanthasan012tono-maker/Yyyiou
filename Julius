@@ -1,0 +1,547 @@
+-- ==============================================
+-- 🎮 GOJO MENU - Roblox Studio
+-- ✅ ปุ่มจุดเล็ก เปิด-ปิดเมนู
+-- ✅ ล็อกผู้เล่น + เห็นชื่อ + ระยะ + กล่องรอบตัว (ESP)
+-- ✅ วิ่งเร็ว | กระโดดสูง | มุดดิน
+-- ✅ พื้นหลังรูป | ลากได้ | รองรับมือถือ
+-- ==============================================
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local PlayerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+local LocalPlayer = game.Players.LocalPlayer
+
+-- ==============================================
+-- ⚙️ ตั้งค่า
+-- ==============================================
+local CONFIG = {
+    BackgroundImage = "rbxassetid://ใส่_ID_รูป_ตรงนี้",
+    MenuSize = {W = 380, H = 680},
+    DefaultSpeed = 16,
+    DefaultJump = 50,
+    MaxRange = 500,
+    ToggleBtnSize = 20,
+    ToggleBtnPos = UDim2.new(0, 15, 0.5, 0),
+    ESP_BoxColor = Color3.fromRGB(255, 0, 0),    -- สีกล่อง
+    ESP_NameColor = Color3.fromRGB(255, 255, 255), -- สีชื่อ
+    ESP_DistColor = Color3.fromRGB(0, 255, 120),    -- สีระยะ
+}
+
+local State = {
+    MenuOpen = true,
+    TargetPlayer = nil,
+    TargetEnabled = false,
+    ShowLine = true,
+    Range = 200,
+    Speed = CONFIG.DefaultSpeed,
+    JumpPower = CONFIG.DefaultJump,
+    DigEnabled = false,
+    DigDepth = 3,
+    -- ESP
+    ESP_Enabled = true,    -- เปิดปิดทั้งหมด
+    ESP_ShowName = true,   -- แสดงชื่อ
+    ESP_ShowDist = true,  -- แสดงระยะ
+    ESP_ShowBox = true,    -- แสดงกล่อง
+}
+
+local Character, Root, Humanoid, Line
+local ESP_Objects = {} -- เก็บ ESP แต่ละคน
+
+-- ==============================================
+-- 🧹 ลบเก่า
+-- ==============================================
+if PlayerGui:FindFirstChild("GojoMenu") then PlayerGui.GojoMenu:Destroy() end
+if Workspace:FindFirstChild("Gojo_Line") then Workspace.Gojo_Line:Destroy() end
+for _, v in pairs(ESP_Objects) do if v then v:Destroy() end end
+ESP_Objects = {}
+
+-- ==============================================
+-- 📐 ตัวละคร
+-- ==============================================
+local function SetupChar()
+    Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    Root = Character:WaitForChild("HumanoidRootPart")
+    Humanoid = Character:WaitForChild("Humanoid")
+    State.Speed = CONFIG.DefaultSpeed
+    State.JumpPower = CONFIG.DefaultJump
+    Humanoid.WalkSpeed = State.Speed
+    Humanoid.JumpPower = State.JumpPower
+end
+SetupChar()
+LocalPlayer.CharacterAdded:Connect(SetupChar)
+
+-- ==============================================
+-- 🔘 ปุ่มจุดลอย เปิด-ปิดเมนู
+-- ==============================================
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "Gojo_Toggle"
+ToggleBtn.Size = UDim2.fromOffset(CONFIG.ToggleBtnSize, CONFIG.ToggleBtnSize)
+ToggleBtn.Position = CONFIG.ToggleBtnPos
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 110, 255)
+ToggleBtn.Text = "⚡"
+ToggleBtn.TextColor3 = Color3.new(1,1,1)
+ToggleBtn.TextScaled = true
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.ZIndex = 999
+ToggleBtn.Active = true
+ToggleBtn.Parent = PlayerGui
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1,0)
+
+-- ลากปุ่มจุดได้
+local Drag = {false, nil, nil}
+ToggleBtn.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        Drag = {true, i.Position, ToggleBtn.Position}
+    end
+end)
+UIS.InputChanged:Connect(function(i)
+    if Drag[1] and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local d = i.Position - Drag[2]
+        ToggleBtn.Position = UDim2.new(0, Drag[3].X.Offset + d.X, 0, Drag[3].Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        Drag[1] = false
+    end
+end)
+
+-- ==============================================
+-- 📦 MAIN GUI
+-- ==============================================
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "GojoMenu"
+Gui.ResetOnSpawn = false
+Gui.Parent = PlayerGui
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.fromOffset(CONFIG.MenuSize.W, CONFIG.MenuSize.H)
+Main.Position = UDim2.new(0.5, -CONFIG.MenuSize.W/2, 0.5, -CONFIG.MenuSize.H/2)
+Main.BackgroundColor3 = Color3.fromRGB(12,12,30)
+Main.Active = true
+Main.ClipsDescendants = true
+Main.Visible = State.MenuOpen
+Main.Parent = Gui
+
+-- 🖼️ พื้นหลังรูป
+local Bg = Instance.new("ImageLabel")
+Bg.Size = UDim2.fromScale(1,1)
+Bg.BackgroundTransparency = 0.3
+Bg.Image = CONFIG.BackgroundImage
+Bg.ScaleType = Enum.ScaleType.Crop
+Bg.Parent = Main
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0,14)
+Instance.new("UICorner", Bg).CornerRadius = UDim.new(0,14)
+
+-- 🏷️ แถบชื่อ + ปุ่มปิด
+local Title = Instance.new("Frame")
+Title.Size = UDim2.new(1,0,0,48)
+Title.BackgroundColor3 = Color3.fromRGB(0,110,255)
+Title.BackgroundTransparency = 0.15
+Title.Active = true
+Title.Parent = Main
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0,14)
+
+local TitleTxt = Instance.new("TextLabel")
+TitleTxt.Size = UDim2.new(1,-50,1,0)
+TitleTxt.BackgroundTransparency = 1
+TitleTxt.Text = "⚡ GOJO MENU ⚡"
+TitleTxt.TextColor3 = Color3.new(1,1,1)
+TitleTxt.TextScaled = true
+TitleTxt.Font = Enum.Font.GothamBold
+TitleTxt.Parent = Title
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.fromOffset(42,36)
+CloseBtn.Position = UDim2.new(1,-47,0,6)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(220,50,50)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.new(1,1,1)
+CloseBtn.TextScaled = true
+CloseBtn.ZIndex = 10
+CloseBtn.Parent = Title
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0,8)
+
+-- 🔄 เปิด-ปิดเมนู
+local function ToggleMenu()
+    State.MenuOpen = not State.MenuOpen
+    Main.Visible = State.MenuOpen
+    ToggleBtn.Text = State.MenuOpen and "⚡" or "○"
+    ToggleBtn.BackgroundColor3 = State.MenuOpen and Color3.fromRGB(0,110,255) or Color3.fromRGB(80,80,120)
+end
+ToggleBtn.MouseButton1Click:Connect(ToggleMenu)
+CloseBtn.MouseButton1Click:Connect(ToggleMenu)
+
+-- ==============================================
+-- 📂 แถบแท็บ
+-- ==============================================
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(1,-20,0,48)
+TabBar.Position = UDim2.fromOffset(10,58)
+TabBar.BackgroundTransparency = 1
+TabBar.Parent = Main
+
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1,-20,1,-120)
+Content.Position = UDim2.fromOffset(10,112)
+Content.BackgroundTransparency = 1
+Content.ClipsDescendants = true
+Content.Parent = Main
+
+local Tabs = {}
+local TabBtns = {}
+local Colors = {
+    Active = Color3.fromRGB(0,110,255),
+    Default = Color3.fromRGB(35,35,70),
+    Blue = Color3.fromRGB(0,110,255),
+    Green = Color3.fromRGB(0,175,75),
+    Red = Color3.fromRGB(200,50,50),
+    Label = Color3.fromRGB(28,28,55),
+}
+
+local function CreateTab(name)
+    local t = Instance.new("ScrollingFrame")
+    t.Name = name
+    t.Size = UDim2.fromScale(1,1)
+    t.BackgroundColor3 = Color3.fromRGB(22,22,48)
+    t.BackgroundTransparency = 0.35
+    t.BorderSizePixel = 0
+    t.ScrollBarThickness = 8
+    t.ScrollBarImageColor3 = Colors.Active
+    t.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    t.Visible = false
+    t.Parent = Content
+
+    local Pad = Instance.new("UIPadding")
+    Pad.PaddingTop = UDim.new(0,12)
+    Pad.PaddingBottom = UDim.new(0,20)
+    Pad.PaddingLeft = UDim.new(0,12)
+    Pad.PaddingRight = UDim.new(0,12)
+    Pad.Parent = t
+
+    local Lay = Instance.new("UIListLayout")
+    Lay.Padding = UDim.new(0,12)
+    Lay.SortOrder = Enum.SortOrder.LayoutOrder
+    Lay.Parent = t
+    Lay:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        t.CanvasSize = UDim2.new(0,0,0,Lay.AbsoluteContentSize.Y+20)
+    end)
+
+    Tabs[name] = t
+    return t
+end
+
+local Tab_Target = CreateTab("Target")
+local Tab_Move = CreateTab("Movement")
+local Tab_ESP = CreateTab("ESP")
+local Tab_Range = CreateTab("Range")
+
+local function AddTabBtn(text, tab)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.fromOffset(62,42)
+    b.BackgroundColor3 = Colors.Default
+    b.BackgroundTransparency = 0.3
+    b.Text = text
+    b.TextColor3 = Color3.new(1,1,1)
+    b.TextScaled = true
+    b.Font = Enum.Font.GothamBold
+    b.Parent = TabBar
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+
+    b.MouseButton1Click:Connect(function()
+        for _,v in pairs(Tabs) do v.Visible = false end
+        for _,v in pairs(TabBtns) do v.BackgroundColor3 = Colors.Default; v.BackgroundTransparency = 0.3 end
+        tab.Visible = true
+        b.BackgroundColor3 = Colors.Active
+        b.BackgroundTransparency = 0
+    end)
+    table.insert(TabBtns, b)
+    return b
+end
+
+AddTabBtn("🎯", Tab_Target)
+AddTabBtn("🏃", Tab_Move)
+AddTabBtn("👁️", Tab_ESP)
+AddTabBtn("📏", Tab_Range)
+
+-- ==============================================
+-- 🧩 UI HELPER
+-- ==============================================
+local function Label(p, t)
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1,0,0,45)
+    l.BackgroundColor3 = Colors.Label
+    l.BackgroundTransparency = 0.3
+    l.Text = t
+    l.TextColor3 = Color3.new(1,1,1)
+    l.TextScaled = true
+    l.Font = Enum.Font.GothamBold
+    l.Parent = p
+    Instance.new("UICorner", l).CornerRadius = UDim.new(0,8)
+    return l
+end
+
+local function Btn(p, t, cb)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1,0,0,50)
+    b.BackgroundColor3 = Colors.Blue
+    b.Text = t
+    b.TextColor3 = Color3.new(1,1,1)
+    b.TextScaled = true
+    b.Font = Enum.Font.GothamBold
+    b.Parent = p
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0,8)
+    b.MouseButton1Click:Connect(cb)
+    return b
+end
+
+-- ==============================================
+-- 🎯 TARGET TAB
+-- ==============================================
+Label(Tab_Target, "🎯 ล็อกผู้เล่น")
+local TgtBtn = Btn(Tab_Target, "ล็อกเป้าหมาย: OFF ❌", function()
+    State.TargetEnabled = not State.TargetEnabled
+    TgtBtn.Text = State.TargetEnabled and "ล็อกเป้าหมาย: ON ✅" or "ล็อกเป้าหมาย: OFF ❌"
+    TgtBtn.BackgroundColor3 = State.TargetEnabled and Colors.Green or Colors.Blue
+end)
+local TgtInfo = Label(Tab_Target, "เป้าหมาย: ไม่มี")
+
+-- ==============================================
+-- 👁️ ESP TAB — เห็นชื่อ + ระยะ + กล่องรอบตัว
+-- ==============================================
+Label(Tab_ESP, "👁️ ESP - มองเห็นผู้เล่น")
+
+local ESP_Info = Label(Tab_ESP, "สถานะ: " .. (State.ESP_Enabled and "เปิด ✅" or "ปิด ❌"))
+
+Btn(Tab_ESP, State.ESP_ShowName and "🏷️ แสดงชื่อ: ON ✅" or "🏷️ แสดงชื่อ: OFF ❌", function(self)
+    State.ESP_ShowName = not State.ESP_ShowName
+    self.Text = State.ESP_ShowName and "🏷️ แสดงชื่อ: ON ✅" or "🏷️ แสดงชื่อ: OFF ❌"
+end)
+
+Btn(Tab_ESP, State.ESP_ShowDist and "📏 แสดงระยะ: ON ✅" or "📏 แสดงระยะ: OFF ❌", function(self)
+    State.ESP_ShowDist = not State.ESP_ShowDist
+    self.Text = State.ESP_ShowDist and "📏 แสดงระยะ: ON ✅" or "📏 แสดงระยะ: OFF ❌"
+end)
+
+Btn(Tab_ESP, State.ESP_ShowBox and "🟥 กล่องรอบตัว: ON ✅" or "🟥 กล่องรอบตัว: OFF ❌", function(self)
+    State.ESP_ShowBox = not State.ESP_ShowBox
+    self.Text = State.ESP_ShowBox and "🟥 กล่องรอบตัว: ON ✅" or "🟥 กล่องรอบตัว: OFF ❌"
+end)
+
+Btn(Tab_ESP, State.ESP_Enabled and "👁️ ESP ทั้งหมด: ON ✅" or "👁️ ESP ทั้งหมด: OFF ❌", function(self)
+    State.ESP_Enabled = not State.ESP_Enabled
+    self.Text = State.ESP_Enabled and "👁️ ESP ทั้งหมด: ON ✅" or "👁️ ESP ทั้งหมด: OFF ❌"
+    self.BackgroundColor3 = State.ESP_Enabled and Colors.Green or Colors.Blue
+    ESP_Info.Text = "สถานะ: " .. (State.ESP_Enabled and "เปิด ✅" or "ปิด ❌")
+end)
+
+-- ==============================================
+-- 🏃 MOVEMENT TAB
+-- ==============================================
+Label(Tab_Move, "🏃 การเคลื่อนไหว")
+
+local SpdLbl = Label(Tab_Move, "🏃 ความเร็ว: " .. State.Speed)
+Btn(Tab_Move, "➕ เร็ว +5", function()
+    if not Humanoid then return end
+    State.Speed = math.min(State.Speed+5, 200)
+    Humanoid.WalkSpeed = State.Speed
+    SpdLbl.Text = "🏃 ความเร็ว: " .. State.Speed
+end)
+Btn(Tab_Move, "➖ ช้า -5", function()
+    if not Humanoid then return end
+    State.Speed = math.max(State.Speed-5, 16)
+    Humanoid.WalkSpeed = State.Speed
+    SpdLbl.Text = "🏃 ความเร็ว: " .. State.Speed
+end)
+Btn(Tab_Move, "🔄 ปกติ", function()
+    if not Humanoid then return end
+    State.Speed = CONFIG.DefaultSpeed
+    Humanoid.WalkSpeed = State.Speed
+    SpdLbl.Text = "🏃 ความเร็ว: " .. State.Speed
+end)
+
+local JumpLbl = Label(Tab_Move, "⬆️ กระโดด: " .. State.JumpPower)
+Btn(Tab_Move, "⬆️ สูง +10", function()
+    if not Humanoid then return end
+    State.JumpPower = math.min(State.JumpPower+10, 200)
+    Humanoid.JumpPower = State.JumpPower
+    JumpLbl.Text = "⬆️ กระโดด: " .. State.JumpPower
+end)
+Btn(Tab_Move, "⬇️ ต่ำ -10", function()
+    if not Humanoid then return end
+    State.JumpPower = math.max(State.JumpPower-10, 50)
+    Humanoid.JumpPower = State.JumpPower
+    JumpLbl.Text = "⬆️ กระโดด: " .. State.JumpPower
+end)
+Btn(Tab_Move, "🔄 ปกติ", function()
+    if not Humanoid then return end
+    State.JumpPower = CONFIG.DefaultJump
+    Humanoid.JumpPower = State.JumpPower
+    JumpLbl.Text = "⬆️ กระโดด: " .. State.JumpPower
+end)
+
+local DigLbl = Label(Tab_Move, "🕳️ มุดลึก: " .. State.DigDepth .. " ม.")
+local DigBtn = Btn(Tab_Move, "🕳️ มุดดิน: OFF ❌", function()
+    State.DigEnabled = not State.DigEnabled
+    DigBtn.Text = State.DigEnabled and "🕳️ มุดดิน: ON ✅" or "🕳️ มุดดิน: OFF ❌"
+    DigBtn.BackgroundColor3 = State.DigEnabled and Colors.Green or Colors.Blue
+    if not State.DigEnabled and Root then
+        Root.Position += Vector3.new(0, State.DigDepth, 0)
+    end
+end)
+Btn(Tab_Move, "⬇️ ลึก +1 ม.", function()
+    State.DigDepth = math.min(State.DigDepth+1, 10)
+    DigLbl.Text = "🕳️ มุดลึก: " .. State.DigDepth .. " ม."
+end)
+Btn(Tab_Move, "⬆️ ตื้น -1 ม.", function()
+    State.DigDepth = math.max(State.DigDepth-1, 1)
+    DigLbl.Text = "🕳️ มุดลึก: " .. State.DigDepth .. " ม."
+end)
+
+-- ==============================================
+-- 📏 RANGE TAB
+-- ==============================================
+Label(Tab_Range, "📏 ระยะล็อกเป้า")
+local RangeLbl = Label(Tab_Range, "ระยะปัจจุบัน: " .. State.Range .. " ม.")
+Btn(Tab_Range, "➕ เพิ่ม 50 ม.", function()
+    State.Range = math.min(State.Range+50, 500)
+    RangeLbl.Text = "ระยะปัจจุบัน: " .. State.Range .. " ม."
+end)
+Btn(Tab_Range, "➖ ลด 50 ม.", function()
+    State.Range = math.max(State.Range-50, 50)
+    RangeLbl.Text = "ระยะปัจจุบัน: " .. State.Range .. " ม."
+end)
+
+-- ==============================================
+-- 🔄 MAIN LOOP — อัปเดต ESP + ล็อกเป้า + มุดดิน
+-- ==============================================
+RunService.RenderStepped:Connect(function()
+    -- มุดดิน
+    if State.DigEnabled and Root then
+        Root.Position -= Vector3.new(0, State.DigDepth, 0)
+    end
+
+    -- ล็อกเป้า
+    if State.TargetEnabled then
+        local closest, minDist = nil, math.huge
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local pr = p.Character.HumanoidRootPart
+                local d = (Root.Position - pr.Position).Magnitude
+                if d <= State.Range and d < minDist then
+                    minDist = d
+                    closest = p
+                end
+            end
+        end
+        State.TargetPlayer = closest
+        if closest then
+            TgtInfo.Text = "🎯 " .. closest.Name .. " | " .. math.floor(minDist) .. " ม."
+        else
+            TgtInfo.Text = "เป้าหมาย: ไม่มี"
+        end
+    else
+        TgtInfo.Text = "เป้าหมาย: ไม่มี"
+    end
+
+    -- ==============================================
+    -- 👁️ ESP SYSTEM — เห็นชื่อ + ระยะ + กล่องรอบตัว
+    -- ==============================================
+    if not State.ESP_Enabled then
+        for _, v in pairs(ESP_Objects) do if v then v.Visible = false end end
+        return
+    end
+
+    -- ลบ ESP คนที่ออก
+    for name, obj in pairs(ESP_Objects) do
+        local p = Players:FindFirstChild(name)
+        if not p or not p.Character then
+            obj:Destroy()
+            ESP_Objects[name] = nil
+        end
+    end
+
+    -- สร้าง/อัปเดต ESP แต่ละคน
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p == LocalPlayer then continue end
+        if not p.Character then continue end
+        local pr = p.Character:FindFirstChild("HumanoidRootPart")
+        local head = p.Character:FindFirstChild("Head")
+        if not pr or not head then continue end
+
+        local camCF = workspace.CurrentCamera.CFrame
+        local pos, onScr = workspace.CurrentCamera:WorldToScreenPoint(pr.Position)
+        local dist = (camCF.Position - pr.Position).Magnitude
+
+        -- สร้างถ้ายังไม่มี
+        if not ESP_Objects[p.Name] then
+            local c = Instance.new("Folder")
+            c.Name = "ESP_" .. p.Name
+            c.Parent = Gui
+
+            -- กล่องรอบตัว
+            local Box = Instance.new("Frame")
+            Box.Size = UDim2.fromOffset(60, 120)
+            Box.Position = UDim2.new(0.5, -30, 0.5, -60)
+            Box.BackgroundTransparency = 1
+            Box.BorderSizePixel = 2
+            Box.BorderColor3 = CONFIG.ESP_BoxColor
+            Box.Parent = c
+
+            -- ชื่อ
+            local NameLbl = Instance.new("TextLabel")
+            NameLbl.Size = UDim2.fromOffset(120, 24)
+            NameLbl.Position = UDim2.new(0.5, -60, 0, -30)
+            NameLbl.BackgroundTransparency = 1
+            NameLbl.Text = p.Name
+            NameLbl.TextColor3 = CONFIG.ESP_NameColor
+            NameLbl.TextScaled = true
+            NameLbl.Font = Enum.Font.GothamBold
+            NameLbl.Parent = c
+
+            -- ระยะ
+            local DistLbl = Instance.new("TextLabel")
+            DistLbl.Size = UDim2.fromOffset(80, 20)
+            DistLbl.Position = UDim2.new(0.5, -40, 1, 5)
+            DistLbl.BackgroundTransparency = 1
+            DistLbl.Text = math.floor(dist) .. " ม."
+            DistLbl.TextColor3 = CONFIG.ESP_DistColor
+            DistLbl.TextScaled = true
+            DistLbl.Font = Enum.Font.GothamBold
+            DistLbl.Parent = c
+
+            ESP_Objects[p.Name] = {Folder = c, Box = Box, Name = NameLbl, Dist = DistLbl}
+        end
+
+        local E = ESP_Objects[p.Name]
+        local scale = 180 / dist -- ปรับขนาดตามระยะ
+        local x, y = pos.X, pos.Y
+
+        -- แสดง/ซ่อน ตามการตั้งค่า
+        E.Folder.Visible = onScr
+        if not onScr then continue end
+
+        -- ตำแหน่งบนจอ
+        E.Folder.Position = UDim2.new(0, x - 40*scale, 0, y - 60*scale)
+
+        -- กล่อง
+        E.Box.Visible = State.ESP_ShowBox
+        E.Box.Size = UDim2.fromOffset(60*scale, 120*scale)
+        E.Box.Position = UDim2.new(0.5, -30*scale, 0.5, -60*scale)
+
+        -- ชื่อ
+        E.Name.Visible = State.ESP_ShowName
+        E.Name.Text = p.Name
+
+        -- ระยะ
+        E.Dist.Visible = State.ESP_ShowDist
+        E.Dist.Text = math.floor(dist) .. " ม."
+    end
+end)
+
+-- เปิดแท็บแรก
+Tab_Target.Visible = true
+TabBtns[1].BackgroundColor3 = Colors.Active
+TabBtns[1].BackgroundTransparency = 0
